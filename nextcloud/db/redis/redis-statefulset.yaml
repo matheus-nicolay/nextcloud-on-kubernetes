@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    io.kompose.service: redis
+  name: redis
+  namespace: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: redis
+  template:
+    metadata:
+      labels:
+        io.kompose.network/kubernetes_nextcloud_network: "true"
+        io.kompose.service: redis
+        pod-label: redis-pod
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/BD
+                operator: In
+                values:
+                - BD
+      containers:
+        - image: redis:7.0.11-alpine
+          name: redis
+          ports:
+          - containerPort: 6379              
+            name: redis-6379
+          resources:
+            requests:
+              memory: "6Mi"
+              cpu: "8m"
+            limits:
+              memory: "10Mi"
+              cpu: "20m"
+          volumeMounts:
+            - mountPath: /data
+              name: db-pvc
+              subPath: nextcloud/redis-data
+      restartPolicy: Always
+      volumes:
+        - name: db-pvc
+          persistentVolumeClaim:
+            claimName: db-pvc
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: redis-service                  # < name of the service
+  namespace: nextcloud                     # < namespace where to place service
+spec: 
+  selector:
+    pod-label: redis-pod                        # < reference to the deployment (connects service with the deployment)                                                      
+  ports:
+    - name: redis-6379
+      protocol: TCP
+      port: 6379

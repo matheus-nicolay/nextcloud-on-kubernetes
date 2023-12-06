@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: nextcloud-config-SSD-pvc
+  name: nextcloud-config-pvc
+  namespace: nextcloud
+spec:
+  storageClassName: ssd-nfs-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+status: {}

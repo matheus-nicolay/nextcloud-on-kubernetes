@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    io.kompose.service: postgres-db
+  name: postgres-db
+  namespace: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: postgres-db
+  template:
+    metadata:
+      labels:
+        pod-label: postgres-db-pod
+        io.kompose.service: postgres-db
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/BD
+                operator: In
+                values:
+                - BD
+      containers:
+        - env:
+            - name: POSTGRES_DB
+              value: nextcloud
+            - name: POSTGRES_PASSWORD
+              value: Databases@1
+            - name: POSTGRES_USER
+              value: nextcloud
+          args:
+          - -c
+          - max_connections=1000
+          - -c
+          - shared_buffers=256MB
+          - -c 
+          - effective_cache_size=8GB
+          - -c 
+          - work_mem=64MB
+          - -c 
+          - maintenance_work_mem=128MB
+          image: postgres:15.3
+          name: postgres
+          ports:
+          - containerPort: 5432
+            name: postgres
+          resources:
+            requests:
+              memory: "100Mi"
+              cpu: "100m"
+            limits:
+              memory: "600Mi"
+              cpu: "210m"
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: db-pvc
+              subPath: nextcloud/postgres-data
+      restartPolicy: Always
+      volumes:
+        - name: db-pvc
+          persistentVolumeClaim:
+            claimName: db-pvc
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: postgres-db-service           # < service name (see link with statufulset yaml)
+  namespace: nextcloud
+spec:
+  selector:
+    pod-label: postgres-db-pod        # < reference to the statefulset (connects the service with the statefulset)
+  ports:
+    - name: postgres
+      protocol: TCP
+      port: 5432

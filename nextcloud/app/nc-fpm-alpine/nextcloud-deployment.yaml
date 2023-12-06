@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ./kompose convert
+    kompose.version: 1.22.0 (955b78124)
+  labels:
+    app: nextcloud
+  name: nextcloud-app
+  namespace: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextcloud
+  strategy:
+    rollingUpdate:
+      maxSurge: 0                  # < The number of pods that can be created above the desired amount of pods during an update
+      maxUnavailable: 1            # < The number of pods that can be unavailable during the update process
+    type: RollingUpdate 
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: ./kompose convert
+        kompose.version: 1.22.0 (955b78124)
+      labels:
+        app: nextcloud
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/APP
+                operator: In
+                values:
+                - APP
+      volumes:
+        - name: nextcloud-config-pvc
+          persistentVolumeClaim:
+            claimName: nextcloud-config-pvc
+        - name: nextcloud-data-pvc
+          persistentVolumeClaim:
+            claimName: nextcloud-data-pvc
+      containers:
+      - image: nextcloud:27.0.1-fpm-alpine
+        #command: 
+        #- /bin/sh
+        #- -c
+        #- printf '%s\n' 'opcache.enable=1' 'opcache.interned_strings_buffer=32' 'opcache.max_accelerated_files=15000' 'opcache.memory_consumption=256' 'opcache.save_comments=1' 'opcache.revalidate_freq=1' 'opcache.validate_timestamps=0' 'opcache.fast_shutdown=1' 'opcache.jit=1255' 'opcache.jit_buffer_size=128M' > /usr/local/etc/php/conf.d/opcache-recommended.ini
+        name: nextcloud
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "250Mi"
+            cpu: "355m"
+          limits:
+            memory: "670Mi"
+            cpu: "900m"
+        env:
+        - name: POSTGRES_DB
+          value: nextcloud
+        - name: POSTGRES_HOST
+          value: 10.0.0.2:5432
+        - name: POSTGRES_PASSWORD
+          value: Database@1
+        - name: POSTGRES_USER
+          value: nextcloud
+        - name: REDIS_HOST
+          value: redis-service
+        - name: OVERWRITEPROTOCOL
+          value: https
+        - name: NEXTCLOUD_INIT_LOCK
+          value: "true"
+        - name: NEXTCLOUD_INIT_HTACCESS
+          value: "true"
+        - name: PHP_UPLOAD_LIMIT
+          value: 15360M
+        - name: PHP_MEMORY_LIMIT
+          value: 1024M
+        ports:
+          - containerPort: 9000
+            name: fcgi
+            protocol: TCP
+        volumeMounts:
+          - mountPath: /var/www/html
+            name: nextcloud-config-pvc
+            subPath: nextcloud/nc-config
+          - mountPath: /var/www/html/data
+            name: nextcloud-data-pvc
+            subPath: nextcloud/nc-data
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: nextcloud-service                
+  namespace: nextcloud                     
+spec: 
+  selector:
+    app: nextcloud                                                                      
+  ports:
+    - name: fcgi
+      protocol: TCP
+      port: 9000
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nextcloud-hpa
+  namespace: nextcloud
+spec:
+  minReplicas: 1
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nextcloud-app
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 150
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 150

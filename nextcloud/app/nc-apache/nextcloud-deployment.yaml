@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nextcloud
+  name: nextcloud-app
+  namespace: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextcloud
+  strategy:
+    rollingUpdate:
+      maxSurge: 0                  # < The number of pods that can be created above the desired amount of pods during an update
+      maxUnavailable: 1            # < The number of pods that can be unavailable during the update process
+    type: RollingUpdate 
+  template:
+    metadata:
+      labels:
+        app: nextcloud
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/APP
+                operator: In
+                values:
+                - APP
+      volumes:
+        - name: nextcloud-config-pvc
+          persistentVolumeClaim:
+            claimName: nextcloud-config-pvc
+        - name: nextcloud-data-pvc
+          persistentVolumeClaim:
+            claimName: nextcloud-data-pvc
+      containers:
+      - image: nextcloud:27.0.0-apache
+        name: nextcloud
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "250Mi"
+            cpu: "355m"
+          limits:
+            memory: "670Mi"
+            cpu: "900m"
+        env:
+        - name: POSTGRES_DB
+          value: nextcloud
+        - name: POSTGRES_HOST
+          value: postgres-db-service:5432
+        - name: POSTGRES_PASSWORD
+          value: Database@1
+        - name: POSTGRES_USER
+          value: nextcloud
+        - name: REDIS_HOST
+          value: redis-service
+        - name: OVERWRITEPROTOCOL
+          value: https
+        - name: NEXTCLOUD_INIT_LOCK
+          value: "true"
+        - name: NEXTCLOUD_INIT_HTACCESS
+          value: "true"
+        - name: PHP_UPLOAD_LIMIT
+          value: 15360M
+        - name: PHP_MEMORY_LIMIT
+          value: 1024M
+        ports:
+          - containerPort: 80
+            name: http
+            protocol: TCP
+        volumeMounts:
+          - mountPath: /var/www/html
+            name: nextcloud-config-pvc
+            subPath: nextcloud/nc-config
+          - mountPath: /var/www/html/data
+            name: nextcloud-data-pvc
+            subPath: nextcloud/nc-data
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: nextcloud-service                
+  namespace: nextcloud                     
+spec: 
+  selector:
+    app: nextcloud                                                                      
+  ports:
+    - name: http-80
+      protocol: TCP
+      port: 80
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nextcloud-hpa
+  namespace: nextcloud
+spec:
+  minReplicas: 1
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nextcloud-app
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 150
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 150
